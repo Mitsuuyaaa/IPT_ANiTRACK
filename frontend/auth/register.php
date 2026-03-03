@@ -9,22 +9,22 @@ if ($conn->connect_error) { die("Connection failed: " . $conn->connect_error); }
 $errors = [];
 $success = false;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $firstname = trim($_POST['firstname'] ?? '');
-    $lastname  = trim($_POST['lastname']  ?? '');
-    $username  = trim($_POST['username']  ?? '');
-    $email     = trim($_POST['email']     ?? '');
-    $phone     = trim($_POST['phone']     ?? '');
-    $type      = trim($_POST['type']      ?? '');
-    $password  = $_POST['password']       ?? '';
-    $confirm   = $_POST['confirm']        ?? '';
+    $firstname = trim($_POST['first_name']  ?? '');
+    $lastname  = trim($_POST['last_name']   ?? '');
+    $username  = trim($_POST['username']    ?? '');
+    $email     = trim($_POST['email']       ?? '');
+    $phone     = trim($_POST['phone']       ?? '');
+    $type      = trim($_POST['user_type']   ?? '');
+    $password  = $_POST['password']         ?? '';
+    $confirm   = $_POST['confirm']          ?? '';
     $terms     = isset($_POST['terms']);
-    if (empty($firstname))  { $errors['firstname'] = "First name is required"; }
-    if (empty($lastname))   { $errors['lastname']  = "Last name is required"; }
+    if (empty($firstname))  { $errors['first_name'] = "First name is required"; }
+    if (empty($lastname))   { $errors['last_name']  = "Last name is required"; }
     if (empty($username))   { $errors['username']  = "Username is required"; }
     elseif (strlen($username) < 3) { $errors['username'] = "At least 3 characters"; }
     if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) { $errors['email'] = "Valid email is required"; }
     if (empty($phone))      { $errors['phone']     = "Phone number is required"; }
-    if (empty($type))       { $errors['type']      = "Please select a type"; }
+    if (empty($type))       { $errors['user_type'] = "Please select a type"; }
     if (empty($password))   { $errors['password']  = "Password is required"; }
     elseif (strlen($password) < 6) { $errors['password'] = "At least 6 characters"; }
     if ($password !== $confirm) { $errors['confirm'] = "Passwords do not match"; }
@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $stmt->close();
             $hashed = password_hash($password, PASSWORD_DEFAULT);
-            $stmt = $conn->prepare("INSERT INTO users (firstname, lastname, username, email, phone, type, password) VALUES (?,?,?,?,?,?,?)");
+            $stmt = $conn->prepare("INSERT INTO users (first_name, last_name, username, email, phone, user_type, password) VALUES (?,?,?,?,?,?,?)");
             $stmt->bind_param("sssssss", $firstname, $lastname, $username, $email, $phone, $type, $hashed);
             if ($stmt->execute()) {
                 $success = true;
@@ -187,13 +187,13 @@ a { text-decoration: none; }
         <div class="row">
           <div class="field">
             <label>First Name</label>
-            <input type="text" name="firstname" id="firstname" placeholder="First Name" value="<?php echo htmlspecialchars($_POST['firstname'] ?? ''); ?>"/>
-            <span class="err" id="firstnameErr"><?php echo $errors['firstname'] ?? ''; ?></span>
+            <input type="text" name="first_name" id="first_name" placeholder="First Name" value="<?php echo htmlspecialchars($_POST['first_name'] ?? ''); ?>"/>
+            <span class="err" id="firstnameErr"><?php echo $errors['first_name'] ?? ''; ?></span>
           </div>
           <div class="field">
             <label>Last Name</label>
-            <input type="text" name="lastname" id="lastname" placeholder="Last Name" value="<?php echo htmlspecialchars($_POST['lastname'] ?? ''); ?>"/>
-            <span class="err" id="lastnameErr"><?php echo $errors['lastname'] ?? ''; ?></span>
+            <input type="text" name="last_name" id="last_name" placeholder="Last Name" value="<?php echo htmlspecialchars($_POST['last_name'] ?? ''); ?>"/>
+            <span class="err" id="lastnameErr"><?php echo $errors['last_name'] ?? ''; ?></span>
           </div>
         </div>
 
@@ -217,12 +217,12 @@ a { text-decoration: none; }
           </div>
           <div class="field">
             <label>Type *</label>
-            <select name="type" id="type">
-              <option value="" disabled <?php echo empty($_POST['type']) ? 'selected' : ''; ?>>Vendor or Farmer</option>
-              <option value="Farmer" <?php echo (($_POST['type'] ?? '') === 'Farmer') ? 'selected' : ''; ?>>Farmer</option>
-              <option value="Vendor" <?php echo (($_POST['type'] ?? '') === 'Vendor') ? 'selected' : ''; ?>>Vendor</option>
+            <select name="user_type" id="user_type">
+              <option value="" disabled <?php echo empty($_POST['user_type']) ? 'selected' : ''; ?>>Vendor or Farmer</option>
+              <option value="Farmer" <?php echo (($_POST['user_type'] ?? '') === 'Farmer') ? 'selected' : ''; ?>>Farmer</option>
+              <option value="Vendor" <?php echo (($_POST['user_type'] ?? '') === 'Vendor') ? 'selected' : ''; ?>>Vendor</option>
             </select>
-            <span class="err" id="typeErr"><?php echo $errors['type'] ?? ''; ?></span>
+            <span class="err" id="typeErr"><?php echo $errors['user_type'] ?? ''; ?></span>
           </div>
         </div>
 
@@ -274,12 +274,12 @@ a { text-decoration: none; }
 <script>
 'use strict';
 const form       = document.getElementById('registerForm');
-const firstnameI = document.getElementById('firstname');
-const lastnameI  = document.getElementById('lastname');
+const firstnameI = document.getElementById('first_name');
+const lastnameI  = document.getElementById('last_name');
 const usernameI  = document.getElementById('username');
 const emailI     = document.getElementById('email');
 const phoneI     = document.getElementById('phone');
-const typeI      = document.getElementById('type');
+const typeI      = document.getElementById('user_type');
 const passwordI  = document.getElementById('password');
 const confirmI   = document.getElementById('confirm');
 const termsI     = document.getElementById('terms');

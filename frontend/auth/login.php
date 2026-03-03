@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (password_verify($password, $row['password'])) {
                 $_SESSION['user_id'] = $row['id'];
                 $_SESSION['username'] = $row['username'];
-                header("Location: dashboard.php");
+                header("Location: ../pages/dashboard.php");
                 exit;
             } else { $errors['password'] = "Incorrect password"; }
         } else { $errors['username'] = "User not found"; }
