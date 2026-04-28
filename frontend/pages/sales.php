@@ -8,6 +8,166 @@ if ($conn->connect_error) { die("Connection failed: ".$conn->connect_error); }
 
 $uid = $_SESSION['user_id'];
 $errors=[]; $success='';
+// ── USER (needed early for PDF) ──
+$stmt=$conn->prepare("SELECT first_name,last_name,username,email,phone,user_type,avatar FROM users WHERE id=?");
+$stmt->bind_param("i",$uid); $stmt->execute();
+$userData=$stmt->get_result()->fetch_assoc(); $stmt->close();
+$displayName=htmlspecialchars($userData['first_name'].' '.$userData['last_name']);
+$userType=htmlspecialchars($userData['user_type']);
+
+// ── DOWNLOAD PDF ──
+if (isset($_GET['download']) && $_GET['download']==='pdf') {
+    $search        = trim($_GET['q']       ?? '');
+    $dateFrom      = trim($_GET['from']    ?? '');
+    $dateTo        = trim($_GET['to']      ?? '');
+    $paymentFilter = trim($_GET['payment'] ?? 'all');
+    $sql2="SELECT s.*, c.full_name AS customer_name FROM sales s LEFT JOIN customers c ON s.customer_id=c.id WHERE s.user_id=?";
+    $params2=[$uid]; $types2="i";
+    if ($search)   { $sql2.=" AND s.product_name LIKE ?"; $params2[]="%$search%"; $types2.="s"; }
+    if ($dateFrom) { $sql2.=" AND s.sale_date >= ?";      $params2[]=$dateFrom;   $types2.="s"; }
+    if ($dateTo)   { $sql2.=" AND s.sale_date <= ?";      $params2[]=$dateTo;     $types2.="s"; }
+    if ($paymentFilter!=='all') { $sql2.=" AND s.payment_status = ?"; $params2[]=$paymentFilter; $types2.="s"; }
+    $sql2.=" ORDER BY s.created_at DESC";
+    $pstmt=$conn->prepare($sql2);
+    $pstmt->bind_param($types2,...$params2); $pstmt->execute();
+    $pdfRows=$pstmt->get_result()->fetch_all(MYSQLI_ASSOC); $pstmt->close();
+
+    $totalRevenue   = array_sum(array_column($pdfRows,'total_amount'));
+    $totalCollected = array_sum(array_column($pdfRows,'amount_paid'));
+    $totalBalance   = array_sum(array_column($pdfRows,'balance'));
+
+    $filterLabel = '';
+    if ($dateFrom && $dateTo) $filterLabel = date('M d, Y',strtotime($dateFrom)).' - '.date('M d, Y',strtotime($dateTo));
+    elseif ($dateFrom)        $filterLabel = 'From '.date('M d, Y',strtotime($dateFrom));
+    elseif ($dateTo)          $filterLabel = 'Until '.date('M d, Y',strtotime($dateTo));
+    else                      $filterLabel = 'All Time';
+    if ($paymentFilter!=='all') $filterLabel .= ' | '.ucfirst($paymentFilter).' Only';
+    if ($search)                $filterLabel .= ' | Product: "'.htmlspecialchars($search).'"';
+
+    header('Content-Type: text/html; charset=utf-8');
+    ob_start();
+?>
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<title>ANI-TRACK Sales Report</title>
+<style>
+@page{size:A4 landscape;margin:18mm 14mm;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial,sans-serif;font-size:11px;color:#1a2e1b;background:#fff;}
+.no-print{background:#1b3a1f;padding:12px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:99;}
+.no-print span{color:#a5d6a7;font-size:13px;font-weight:700;}
+.no-print button{border:none;padding:8px 20px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;}
+.btn-print{background:#43a047;color:#fff;margin-left:auto;}
+.btn-close{background:rgba(255,255,255,0.1);color:#fff;}
+.wrap{padding:8mm 2mm;}
+.header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;padding-bottom:12px;border-bottom:3px solid #43a047;}
+.logo{font-size:26px;font-weight:900;color:#2e7d32;letter-spacing:1px;}
+.logo span{color:#a5d6a7;}
+.logo small{display:block;font-size:9px;font-weight:400;color:#888;letter-spacing:2px;margin-top:2px;}
+.report-title{text-align:right;}
+.report-title h2{font-size:16px;font-weight:700;color:#1b3a1f;}
+.report-title p{font-size:10px;color:#888;margin-top:3px;}
+.meta{display:flex;gap:10px;margin-bottom:14px;}
+.meta-box{flex:1;background:#f1f8f1;border-radius:8px;padding:10px 14px;border-left:4px solid #43a047;}
+.meta-box.red{border-left-color:#e53935;background:#fff5f5;}
+.meta-box.blue{border-left-color:#1e88e5;background:#f0f6ff;}
+.meta-box label{font-size:9px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:3px;}
+.meta-box strong{font-size:15px;font-weight:700;color:#1b3a1f;}
+.meta-box.red strong{color:#c62828;}
+.meta-box.blue strong{color:#1565c0;}
+.filter-bar{background:#e8f5e9;border-radius:6px;padding:7px 12px;font-size:10px;color:#2e7d32;margin-bottom:14px;font-weight:600;}
+.filter-bar span{color:#555;font-weight:400;margin-left:6px;}
+table{width:100%;border-collapse:collapse;font-size:10px;}
+thead tr{background:#2e7d32;}
+thead th{color:#fff;padding:8px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;}
+tbody tr:nth-child(even){background:#f8fdf8;}
+tbody tr:nth-child(odd){background:#fff;}
+tbody td{padding:7px 8px;border-bottom:1px solid #e8f0e8;vertical-align:middle;}
+tbody tr:last-child td{border-bottom:none;}
+.amount{font-weight:700;color:#2e7d32;}
+.balance{font-weight:700;color:#e65100;}
+.badge{display:inline-block;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700;}
+.badge.paid{background:#e8f5e9;color:#2e7d32;}
+.badge.partial{background:#fff3e0;color:#e65100;}
+.badge.unpaid{background:#ffebee;color:#c62828;}
+.method-tag{display:inline-block;padding:2px 7px;border-radius:5px;background:#f3f4f6;color:#555;font-size:9px;font-weight:600;}
+tfoot tr{background:#1b3a1f;}
+tfoot td{padding:9px 8px;color:#fff;font-weight:700;font-size:10px;}
+.footer-bar{margin-top:16px;padding-top:10px;border-top:1px solid #d0e8d0;display:flex;justify-content:space-between;font-size:9px;color:#aaa;}
+@media print{.no-print{display:none!important;}body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+</style>
+</head>
+<body>
+<div class="no-print">
+  <span>&#128196; ANI-TRACK Sales Report</span>
+  <button class="btn-print" onclick="window.print()">&#11015; Save as PDF</button>
+  <button class="btn-close" onclick="window.close()">&#10005; Close</button>
+</div>
+<div class="wrap">
+  <div class="header">
+    <div>
+      <div class="logo">ANI<span>TRACK</span><small>FARM SALES TRACKER</small></div>
+      <div style="font-size:10px;color:#666;margin-top:6px;">Prepared for: <strong><?php echo htmlspecialchars($userData['first_name'].' '.$userData['last_name']); ?></strong> (<?php echo htmlspecialchars($userData['user_type']); ?>)</div>
+    </div>
+    <div class="report-title">
+      <h2>Sales Report</h2>
+      <p>Generated: <?php echo date('F d, Y \a\t h:i A'); ?></p>
+      <p style="margin-top:4px;">Total Records: <strong><?php echo count($pdfRows); ?></strong></p>
+    </div>
+  </div>
+  <div class="meta">
+    <div class="meta-box"><label>Total Revenue</label><strong>&#8369;<?php echo number_format($totalRevenue,2); ?></strong></div>
+    <div class="meta-box blue"><label>Total Collected</label><strong>&#8369;<?php echo number_format($totalCollected,2); ?></strong></div>
+    <div class="meta-box red"><label>Total Balance</label><strong>&#8369;<?php echo number_format($totalBalance,2); ?></strong></div>
+    <div class="meta-box"><label>Transactions</label><strong><?php echo count($pdfRows); ?></strong></div>
+  </div>
+  <div class="filter-bar">Filter: <span><?php echo $filterLabel; ?></span></div>
+  <table>
+    <thead><tr><th>#</th><th>Date</th><th>Product</th><th>Customer</th><th>Qty</th><th>Unit Price</th><th>Total</th><th>Method</th><th>Status</th><th>Paid</th><th>Balance</th><th>Notes</th></tr></thead>
+    <tbody>
+      <?php if(empty($pdfRows)): ?>
+      <tr><td colspan="12" style="text-align:center;padding:20px;color:#888;">No sales records found.</td></tr>
+      <?php else: foreach($pdfRows as $i=>$s): ?>
+      <tr>
+        <td><?php echo $i+1; ?></td>
+        <td style="white-space:nowrap;"><?php echo date('M d, Y',strtotime($s['sale_date'])); ?></td>
+        <td><strong><?php echo htmlspecialchars($s['product_name']); ?></strong></td>
+        <td><?php echo $s['customer_name']?htmlspecialchars($s['customer_name']):'<span style="color:#bbb">Walk-in</span>'; ?></td>
+        <td><?php echo number_format($s['quantity'],2); ?></td>
+        <td>&#8369;<?php echo number_format($s['unit_price'],2); ?></td>
+        <td class="amount">&#8369;<?php echo number_format($s['total_amount'],2); ?></td>
+        <td><span class="method-tag"><?php echo ucfirst($s['payment_method']??'cash'); ?></span></td>
+        <td><span class="badge <?php echo $s['payment_status']??'paid'; ?>"><?php echo ucfirst($s['payment_status']??'paid'); ?></span></td>
+        <td class="amount">&#8369;<?php echo number_format($s['amount_paid'],2); ?></td>
+        <td><?php if(($s['balance']??0)>0): ?><span class="balance">&#8369;<?php echo number_format($s['balance'],2); ?></span><?php else: ?>&#8212;<?php endif; ?></td>
+        <td style="color:#888;"><?php echo htmlspecialchars($s['notes']??''); ?></td>
+      </tr>
+      <?php endforeach;endif; ?>
+    </tbody>
+    <?php if(!empty($pdfRows)): ?>
+    <tfoot><tr>
+      <td colspan="6" style="text-align:right;font-size:9px;letter-spacing:1px;">TOTALS</td>
+      <td>&#8369;<?php echo number_format($totalRevenue,2); ?></td>
+      <td colspan="2"></td>
+      <td>&#8369;<?php echo number_format($totalCollected,2); ?></td>
+      <td style="color:#ffcc80;">&#8369;<?php echo number_format($totalBalance,2); ?></td>
+      <td></td>
+    </tr></tfoot>
+    <?php endif; ?>
+  </table>
+  <div class="footer-bar">
+    <span>ANI-TRACK | Farm Sales Tracker</span>
+    <span>This report is auto-generated and for internal use only.</span>
+    <span>&copy; <?php echo date('Y'); ?> ANI-TRACK</span>
+  </div>
+</div>
+</body>
+</html>
+<?php ob_end_flush(); exit; }
+
+
 
 // ── DELETE ──
 if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action']??'')==='delete') {
@@ -265,6 +425,10 @@ tbody tr:hover td{background:#fafffe;}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Record Sale
       </button>
+        <a id="downloadPdfBtn" href="sales.php?download=pdf" target="_blank" class="btn-primary" style="background:linear-gradient(135deg,#ef6c00,#e65100);box-shadow:0 4px 12px rgba(230,81,0,0.3);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download PDF
+        </a>
     </div>
 
     <form method="GET">
