@@ -1,8 +1,10 @@
 <?php
 session_start();
 if (isset($_SESSION['user_id'])) {
-    header("Location: ../pages/dashboard.php");
-    exit;
+    $t = $_SESSION['user_type'] ?? '';
+    if ($t === 'admin')  { header("Location: ../admin/dashboard.php");    exit; }
+    if ($t === 'Vendor') { header("Location: ../pages/marketplace.php");  exit; }
+    header("Location: ../pages/dashboard.php"); exit;
 }
 
 $host = "localhost"; $db = "anitrack"; $user = "root"; $pass = "";
@@ -10,6 +12,7 @@ $conn = new mysqli($host, $user, $pass, $db);
 if ($conn->connect_error) { die("Connection failed: " . $conn->connect_error); }
 
 $error = '';
+$error_type = 'error'; // 'error' | 'pending' | 'rejected'
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
@@ -18,20 +21,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($username) || empty($password)) {
         $error = "Please enter your username and password.";
     } else {
-        $stmt = $conn->prepare("SELECT id, first_name, last_name, username, password, user_type FROM users WHERE username = ? OR email = ?");
+        $stmt = $conn->prepare("SELECT id, first_name, last_name, username, password, user_type, status, avatar FROM users WHERE username = ? OR email = ?");
         $stmt->bind_param("ss", $username, $username);
         $stmt->execute();
         $userRow = $stmt->get_result()->fetch_assoc();
         $stmt->close();
 
         if ($userRow && password_verify($password, $userRow['password'])) {
-            session_regenerate_id(true);
-            $_SESSION['user_id']   = $userRow['id'];
-            $_SESSION['username']  = $userRow['username'];
-            $_SESSION['user_type'] = $userRow['user_type'];
-            $_SESSION['name']      = $userRow['first_name'] . ' ' . $userRow['last_name'];
-            header("Location: ../pages/dashboard.php");
-            exit;
+            if ($userRow['status'] === 'pending') {
+                $error = "Your account is pending admin approval. Please wait.";
+                $error_type = 'pending';
+            } elseif ($userRow['status'] === 'rejected') {
+                $error = "Your account was not approved. Please contact support.";
+                $error_type = 'rejected';
+            } else {
+                session_regenerate_id(true);
+                $_SESSION['user_id']   = $userRow['id'];
+                $_SESSION['username']  = $userRow['username'];
+                $_SESSION['user_type'] = $userRow['user_type'];
+                $_SESSION['fullname']  = $userRow['first_name'] . ' ' . $userRow['last_name'];
+                $_SESSION['name']      = $userRow['first_name'] . ' ' . $userRow['last_name'];
+                $_SESSION['avatar']    = $userRow['avatar'] ?? '';
+                if ($userRow['user_type'] === 'admin')  { header("Location: ../admin/dashboard.php");   exit; }
+                if ($userRow['user_type'] === 'Vendor') { header("Location: ../pages/marketplace.php"); exit; }
+                header("Location: ../pages/dashboard.php"); exit;
+            }
         } else {
             $error = "Invalid username or password.";
         }
@@ -64,7 +78,6 @@ body {
   flex-direction: column;
 }
 
-/* Grain overlay — same as index.php */
 body::before {
   content: '';
   position: fixed; inset: 0;
@@ -72,7 +85,6 @@ body::before {
   opacity: 0.04; pointer-events: none; z-index: 1000;
 }
 
-/* Background radial — same as index hero */
 .bg-layer {
   position: fixed; inset: 0; z-index: 0; pointer-events: none;
   background:
@@ -81,17 +93,14 @@ body::before {
     linear-gradient(135deg, #0d2211 0%, #162c1a 40%, #1b3a1f 70%, #0f2813 100%);
 }
 
-/* Decorative spinning circles */
 .bg-circle { position: fixed; border-radius: 50%; pointer-events: none; z-index: 0; }
 .bc1 { width: 600px; height: 600px; border: 1px solid rgba(165,214,167,0.05); top: 50%; right: -150px; transform: translateY(-50%); animation: slowspin 30s linear infinite; }
 .bc2 { width: 400px; height: 400px; border: 1px solid rgba(165,214,167,0.07); top: 50%; right: 0; transform: translateY(-50%); animation: slowspin 20s linear infinite reverse; }
 @keyframes slowspin { to { transform: translateY(-50%) rotate(360deg); } }
 
-/* Floating leaves */
 .leaf { position: fixed; opacity: 0; animation: floatLeaf linear infinite; pointer-events: none; z-index: 0; }
 @keyframes floatLeaf { 0%{opacity:0;transform:translateY(100vh) rotate(0deg) scale(0.5);} 10%{opacity:0.5;} 90%{opacity:0.2;} 100%{opacity:0;transform:translateY(-20vh) rotate(720deg) scale(1);} }
 
-/* NAV — identical to index.php */
 nav {
   position: relative; z-index: 10;
   padding: 20px 60px;
@@ -106,14 +115,12 @@ nav {
 .nav-btn.solid { background:var(--g4); border:1.5px solid var(--g4); color:#fff; box-shadow:0 4px 20px rgba(67,160,71,0.4); }
 .nav-btn.solid:hover { background:var(--g5); border-color:var(--g5); transform:translateY(-1px); box-shadow:0 6px 24px rgba(67,160,71,0.5); }
 
-/* Main area */
 .main {
   flex: 1; position: relative; z-index: 1;
   display: flex; align-items: center; justify-content: center;
   padding: 40px 24px 60px;
 }
 
-/* Card */
 .login-wrap {
   display: flex; width: 860px; max-width: 98vw;
   border-radius: 24px; overflow: hidden;
@@ -123,7 +130,6 @@ nav {
 }
 @keyframes fadeUp { from{opacity:0;transform:translateY(28px);} to{opacity:1;transform:translateY(0);} }
 
-/* Left panel */
 .login-left {
   width: 320px; flex-shrink: 0;
   background: linear-gradient(160deg, #1b3a1f 0%, #0d2211 100%);
@@ -162,7 +168,6 @@ nav {
 
 .left-footer { z-index:1; font-size:11px; color:rgba(255,255,255,0.2); font-style:italic; }
 
-/* Right panel */
 .login-right {
   flex: 1;
   background: linear-gradient(145deg, #0f1f12, #162c1a);
@@ -175,14 +180,16 @@ nav {
 .form-title em { font-style:italic; color:var(--g5); }
 .form-sub { font-size:13px; color:rgba(255,255,255,0.35); margin-bottom:30px; }
 
-.alert-error {
-  display:flex; align-items:center; gap:10px;
-  padding:12px 16px;
-  background:rgba(229,57,53,0.1); border:1px solid rgba(229,57,53,0.25);
-  border-radius:10px; font-size:13px; color:#ef9a9a;
+/* Alert styles */
+.alert-box {
+  display:flex; align-items:flex-start; gap:10px;
+  padding:12px 16px; border-radius:10px; font-size:13px;
   margin-bottom:20px; animation:fadeUp 0.3s ease;
 }
-.alert-error svg { width:16px; height:16px; flex-shrink:0; }
+.alert-box svg { width:16px; height:16px; flex-shrink:0; margin-top:1px; }
+.alert-box.error   { background:rgba(229,57,53,0.1);  border:1px solid rgba(229,57,53,0.25);  color:#ef9a9a; }
+.alert-box.pending { background:rgba(251,140,0,0.1);  border:1px solid rgba(251,140,0,0.3);   color:#ffcc80; }
+.alert-box.rejected{ background:rgba(229,57,53,0.12); border:1px solid rgba(229,57,53,0.3);   color:#ef9a9a; }
 
 .form-field { margin-bottom:18px; }
 .form-field label { display:block; font-size:11px; font-weight:600; color:rgba(255,255,255,0.4); letter-spacing:1px; text-transform:uppercase; margin-bottom:8px; }
@@ -273,9 +280,13 @@ nav {
       <p class="form-sub">Enter your credentials to continue.</p>
 
       <?php if ($error): ?>
-      <div class="alert-error">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <?php echo htmlspecialchars($error); ?>
+      <div class="alert-box <?php echo $error_type; ?>">
+        <?php if ($error_type === 'pending'): ?>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
+        <?php else: ?>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <?php endif; ?>
+        <span><?php echo htmlspecialchars($error); ?></span>
       </div>
       <?php endif; ?>
 

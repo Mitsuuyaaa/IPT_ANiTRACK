@@ -1,10 +1,8 @@
 <?php
 session_start();
 
-// Destroy all session data
 $_SESSION = [];
 
-// Delete the session cookie
 if (ini_get("session.use_cookies")) {
     $params = session_get_cookie_params();
     setcookie(
@@ -16,7 +14,6 @@ if (ini_get("session.use_cookies")) {
 
 session_destroy();
 
-// ── Redirect to landing page ──
-header("Location: ../auth/login.php");
+header("Location: login.php");
 exit;
 ?>

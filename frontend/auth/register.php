@@ -1,6 +1,11 @@
 <?php
 session_start();
-if (isset($_SESSION['user_id'])) { header("Location: ../pages/dashboard.php"); exit; }
+if (isset($_SESSION['user_id'])) {
+    $t = $_SESSION['user_type'] ?? '';
+    if ($t === 'admin')  { header("Location: ../admin/dashboard.php");   exit; }
+    if ($t === 'Vendor') { header("Location: ../pages/marketplace.php"); exit; }
+    header("Location: ../pages/dashboard.php"); exit;
+}
 
 $host = "localhost"; $db = "anitrack"; $user = "root"; $pass = "";
 $conn = new mysqli($host, $user, $pass, $db);
@@ -40,7 +45,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $stmt->close();
             $hashed = password_hash($password, PASSWORD_DEFAULT);
-            $stmt = $conn->prepare("INSERT INTO users (first_name, last_name, username, email, phone, user_type, password) VALUES (?,?,?,?,?,?,?)");
+            // status = 'pending' — admin must approve before user can log in
+            $stmt = $conn->prepare("INSERT INTO users (first_name, last_name, username, email, phone, user_type, password, status) VALUES (?,?,?,?,?,?,?,'pending')");
             $stmt->bind_param("sssssss", $firstname, $lastname, $username, $email, $phone, $type, $hashed);
             if ($stmt->execute()) { $success = true; }
             else { $errors['general'] = "Registration failed. Please try again."; }
@@ -69,13 +75,11 @@ body {
   background: var(--g1);
   color: #fff;
   overflow-x: hidden;
-  /* FIX: column flex + flex-start = scrollable */
   display: flex;
   flex-direction: column;
   align-items: stretch;
 }
 
-/* Grain — same as index.php */
 body::before {
   content: '';
   position: fixed; inset: 0;
@@ -98,7 +102,6 @@ body::before {
 .leaf { position: fixed; opacity: 0; animation: floatLeaf linear infinite; pointer-events: none; z-index: 0; }
 @keyframes floatLeaf { 0%{opacity:0;transform:translateY(100vh) rotate(0deg) scale(0.5);} 10%{opacity:0.5;} 90%{opacity:0.2;} 100%{opacity:0;transform:translateY(-20vh) rotate(720deg) scale(1);} }
 
-/* NAV */
 nav {
   position: relative; z-index: 10;
   padding: 20px 60px;
@@ -114,14 +117,12 @@ nav {
 .nav-btn.solid { background:var(--g4); border:1.5px solid var(--g4); color:#fff; box-shadow:0 4px 20px rgba(67,160,71,0.4); }
 .nav-btn.solid:hover { background:var(--g5); border-color:var(--g5); transform:translateY(-1px); }
 
-/* Page body */
 .page-body {
   position: relative; z-index: 1;
   padding: 40px 24px 60px;
   display: flex; justify-content: center;
 }
 
-/* Card */
 .register-wrap {
   display: flex; width: 920px; max-width: 98vw;
   border-radius: 24px; overflow: hidden;
@@ -131,7 +132,6 @@ nav {
 }
 @keyframes fadeUp { from{opacity:0;transform:translateY(28px);} to{opacity:1;transform:translateY(0);} }
 
-/* Left panel */
 .reg-left {
   width: 300px; flex-shrink: 0;
   background: linear-gradient(160deg, #1b3a1f 0%, #0d2211 100%);
@@ -165,7 +165,6 @@ nav {
 
 .left-footer { z-index:1; font-size:11px; color:rgba(255,255,255,0.2); font-style:italic; }
 
-/* Right panel — the form */
 .reg-right {
   flex: 1;
   background: linear-gradient(145deg, #0f1f12, #162c1a);
@@ -179,9 +178,32 @@ nav {
 
 .alert { padding:12px 16px; border-radius:10px; font-size:13px; margin-bottom:18px; display:flex; align-items:flex-start; gap:8px; }
 .alert svg { width:16px; height:16px; flex-shrink:0; margin-top:1px; }
-.alert.error { background:rgba(229,57,53,0.1); border:1px solid rgba(229,57,53,0.25); color:#ef9a9a; }
-.alert.success { background:rgba(67,160,71,0.1); border:1px solid rgba(67,160,71,0.25); color:var(--g6); }
+.alert.error   { background:rgba(229,57,53,0.1);  border:1px solid rgba(229,57,53,0.25);  color:#ef9a9a; }
+.alert.success { background:rgba(67,160,71,0.1);  border:1px solid rgba(67,160,71,0.25);  color:var(--g6); }
+.alert.pending { background:rgba(251,140,0,0.1);  border:1px solid rgba(251,140,0,0.3);   color:#ffcc80; }
 .alert.success a { color:var(--g5); font-weight:700; }
+
+/* Success screen */
+.success-screen { text-align:center; padding:20px 10px; }
+.success-screen .s-icon { font-size:56px; margin-bottom:16px; }
+.success-screen h2 { font-family:'Playfair Display',serif; font-size:24px; font-weight:900; color:#fff; margin-bottom:10px; }
+.success-screen p { font-size:13px; color:rgba(255,255,255,0.5); line-height:1.8; margin-bottom:20px; }
+.success-screen .pending-pill {
+  display:inline-flex; align-items:center; gap:8px;
+  background:rgba(251,140,0,0.1); border:1px solid rgba(251,140,0,0.3);
+  color:#ffcc80; padding:8px 20px; border-radius:50px;
+  font-size:12px; font-weight:600; margin-bottom:24px;
+}
+.success-screen .pending-pill::before { content:''; width:7px; height:7px; border-radius:50%; background:#fb8c00; animation:pulse 2s ease-in-out infinite; }
+.btn-back {
+  display:inline-block; padding:12px 32px;
+  background:linear-gradient(135deg,var(--g5),var(--g3));
+  color:#fff; border-radius:10px; font-family:'Poppins',sans-serif;
+  font-size:13px; font-weight:700; text-decoration:none;
+  box-shadow:0 6px 24px rgba(67,160,71,0.35);
+  transition:all 0.25s;
+}
+.btn-back:hover { transform:translateY(-2px); box-shadow:0 10px 32px rgba(67,160,71,0.5); }
 
 .form-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
 .form-field { margin-bottom:14px; }
@@ -203,7 +225,7 @@ nav {
 .input-wrap select:focus { border-color:var(--g4); background:rgba(67,160,71,0.07); box-shadow:0 0 0 4px rgba(67,160,71,0.12); }
 .input-wrap input:hover:not(:focus),
 .input-wrap select:hover:not(:focus) { border-color:rgba(255,255,255,0.18); }
-.input-wrap input.err-field { border-color:rgba(229,57,53,0.5); }
+.input-wrap input.err-field,
 .input-wrap select.err-field { border-color:rgba(229,57,53,0.5); }
 
 .pw-wrap { position:relative; }
@@ -214,18 +236,15 @@ nav {
 
 .err-msg { font-size:11px; color:#f48fb1; margin-top:5px; display:block; min-height:14px; }
 
-/* Checkbox terms */
 .terms-row { display:flex; align-items:flex-start; gap:10px; margin-bottom:16px; cursor:pointer; }
 .terms-row input[type="checkbox"] { display:none; }
 .check-box { width:18px; height:18px; border:1.5px solid rgba(255,255,255,0.2); border-radius:5px; flex-shrink:0; display:flex; align-items:center; justify-content:center; margin-top:2px; transition:all 0.2s; background:rgba(255,255,255,0.04); }
-.terms-row input:checked ~ .check-box,
 .terms-row input:checked + .check-box { background:var(--g4); border-color:var(--g4); }
 .terms-row input:checked + .check-box::after { content:''; display:block; width:10px; height:6px; border-left:2px solid #fff; border-bottom:2px solid #fff; transform:rotate(-45deg) translateY(-1px); }
 .terms-label { font-size:13px; color:rgba(255,255,255,0.5); line-height:1.5; }
 .terms-label a { color:var(--g5); font-weight:600; text-decoration:none; }
 .terms-label a:hover { color:var(--g6); }
 
-/* Submit */
 .btn-register {
   width:100%; padding:14px;
   background:linear-gradient(135deg,var(--g5),var(--g3));
@@ -288,11 +307,11 @@ nav {
           </div>
           <div class="step-item">
             <div class="step-num">2</div>
-            <div class="step-text"><strong>Add your products</strong><span>Build your inventory list</span></div>
+            <div class="step-text"><strong>Wait for approval</strong><span>Admin verifies your account</span></div>
           </div>
           <div class="step-item">
             <div class="step-num">3</div>
-            <div class="step-text"><strong>Record your sales</strong><span>Track every transaction</span></div>
+            <div class="step-text"><strong>Start using ANI-TRACK</strong><span>Track sales & manage inventory</span></div>
           </div>
         </div>
       </div>
@@ -305,12 +324,6 @@ nav {
       <h1 class="form-title">Sign Up for<br><em>ANI-TRACK</em></h1>
       <p class="form-sub">Fill in your details below to get started — it's free.</p>
 
-      <?php if ($success): ?>
-      <div class="alert success">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20,6 9,17 4,12"/></svg>
-        <div>🎉 Account created! <a href="login.php">Click here to sign in →</a></div>
-      </div>
-      <?php endif; ?>
       <?php if (!empty($errors['general'])): ?>
       <div class="alert error">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -318,7 +331,18 @@ nav {
       </div>
       <?php endif; ?>
 
-      <?php if (!$success): ?>
+      <?php if ($success): ?>
+      <!-- ── SUCCESS / PENDING SCREEN ── -->
+      <div class="success-screen">
+        <div class="s-icon">🌾</div>
+        <h2>Account Submitted!</h2>
+        <p>Your account has been created and is now <strong style="color:#ffcc80;">waiting for admin approval</strong>.<br>You will be able to log in once your account is verified.</p>
+        <div class="pending-pill">⏳ Pending Approval</div><br/>
+        <a href="login.php" class="btn-back">← Back to Sign In</a>
+      </div>
+
+      <?php else: ?>
+      <!-- ── REGISTRATION FORM ── -->
       <form id="regForm" method="POST" action="register.php">
 
         <div class="form-row">
@@ -374,8 +398,8 @@ nav {
               <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               <select name="user_type" id="user_type" class="<?php echo isset($errors['user_type'])?'err-field':''; ?>">
                 <option value="" disabled <?php echo empty($_POST['user_type'])?'selected':''; ?>>Farmer or Vendor</option>
-                <option value="Farmer" <?php echo (($_POST['user_type']??'')==='Farmer')?'selected':''; ?>>Farmer</option>
-                <option value="Vendor" <?php echo (($_POST['user_type']??'')==='Vendor')?'selected':''; ?>>Vendor</option>
+                <option value="Farmer" <?php echo (($_POST['user_type']??'')==='Farmer')?'selected':''; ?>>🌾 Farmer</option>
+                <option value="Vendor" <?php echo (($_POST['user_type']??'')==='Vendor')?'selected':''; ?>>🛒 Vendor</option>
               </select>
             </div>
             <span class="err-msg" id="typeErr"><?php echo $errors['user_type'] ?? ''; ?></span>
@@ -466,7 +490,17 @@ if (form) {
     const cf = document.getElementById('confirm').value;
     if (pw && cf && pw !== cf) {
       document.getElementById('confirmErr').textContent = 'Passwords do not match';
+      document.getElementById('confirm').classList.add('err-field');
       valid = false;
+    }
+    const type = document.getElementById('user_type').value;
+    if (!type) {
+      document.getElementById('typeErr').textContent = 'Please select an account type';
+      document.getElementById('user_type').classList.add('err-field');
+      valid = false;
+    } else {
+      document.getElementById('typeErr').textContent = '';
+      document.getElementById('user_type').classList.remove('err-field');
     }
     if (!document.getElementById('terms').checked) {
       document.getElementById('termsErr').textContent = 'You must agree to the terms';
